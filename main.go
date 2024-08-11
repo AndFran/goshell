@@ -2,15 +2,23 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 )
 
 type Command struct {
 	Cmd  string
 	Args []string
+}
+
+type History struct {
+	Entry []string `json:"entry"`
 }
 
 func cleanString(s string) string {
@@ -79,8 +87,52 @@ func handleDirChange(arg string) error {
 	return err
 }
 
+func loadHistory() (*History, error) {
+	historyFile, err := os.OpenFile("history.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+	defer historyFile.Close()
+	var history History
+	err = json.NewDecoder(historyFile).Decode(&history)
+	if err != nil {
+		if err == io.EOF {
+			return &History{Entry: make([]string, 0)}, nil
+		}
+		return nil, err
+	}
+
+	return &history, nil
+}
+
+func saveHistory(history *History) error {
+	file, err := os.OpenFile("history.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	err = json.NewEncoder(file).Encode(history)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func showHistory(history *History) {
+	for _, h := range history.Entry {
+		fmt.Println(h)
+	}
+}
+
 func main() {
+	signal.Ignore(os.Interrupt)
 	var err error
+
+	history, err := loadHistory()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		fmt.Print("ccsh>")
 		reader := bufio.NewReader(os.Stdin)
@@ -105,15 +157,22 @@ func main() {
 				continue
 			}
 		case "exit":
+			err = saveHistory(history)
+			if err != nil {
+				fmt.Println("Error saving history:", err)
+			}
 			os.Exit(0)
 		case "pwd":
 			pwd, _ := os.Getwd()
 			fmt.Println(pwd)
+		case "history":
+			showHistory(history)
 		default:
 			err = executeCommand(commands)
 			if err != nil {
 				fmt.Println("Unknown command")
 			}
 		}
+		history.Entry = append(history.Entry, strings.TrimSpace(input))
 	}
 }

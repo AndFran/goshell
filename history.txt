@@ -1,0 +1,1 @@
+{"entry":["history","history","cd .","cd .","cd .","history","ls","ls -d","ls -l","ls -a","history","history"]}
